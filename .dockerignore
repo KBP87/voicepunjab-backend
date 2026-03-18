@@ -1,0 +1,9 @@
+node_modules
+npm-debug.log
+Dockerfile
+.git
+.gitignore
+.env
+keys/google_key.json
+cache
+data.sqlite

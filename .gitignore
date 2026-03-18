@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+
+# Google credentials
+keys/google_key.json
+
+# SQLite database
+data.sqlite
+
+# Cache audio
+cache/
+
+# Logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Mac files
+.DS_Store
