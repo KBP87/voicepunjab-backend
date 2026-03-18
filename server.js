@@ -395,7 +395,6 @@ VoicePunjabAI`,
   console.log("Verification email sent:", info.messageId);
 }
 
-
 async function createPasswordResetToken(userId) {
   const token = makeVerificationToken();
 
@@ -611,6 +610,7 @@ app.use((req, res, next) => {
 
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
@@ -675,10 +675,17 @@ app.use("/api/admin", adminLimiter);
 app.get("/health", async (req, res) => {
   try {
     await dbGet("SELECT 1 AS ok");
-    res.send("ok");
+    res.json({
+      status: "ok",
+      db: "connected",
+      service: "voicepunjab-api"
+    });
   } catch (err) {
     console.error("health error:", err.message);
-    res.status(500).send("db not ready");
+    res.status(500).json({
+      status: "error",
+      db: "not ready"
+    });
   }
 });
 
@@ -822,7 +829,6 @@ app.post("/api/resend-verification", async (req, res) => {
   }
 });
 
-
 app.get("/api/verify-email", async (req, res) => {
   try {
     const token = normalizeText(req.query?.token);
@@ -893,7 +899,6 @@ app.post("/api/forgot-password", async (req, res) => {
     return res.status(500).json({ error: "Could not process password reset request." });
   }
 });
-
 
 app.post("/api/reset-password", async (req, res) => {
   try {
@@ -1217,7 +1222,7 @@ app.post("/api/tts", async (req, res) => {
     if (existing) {
       const cachedFilePath = path.join(CACHE_DIR, existing.file_name);
       if (fs.existsSync(cachedFilePath)) {
-        audioUrl = `/cache/${existing.file_name}`;
+        audioUrl = `${API_PUBLIC_BASE_URL}/cache/${existing.file_name}`;
         wasCached = true;
       }
     }
@@ -1245,7 +1250,7 @@ app.post("/api/tts", async (req, res) => {
         [cacheKey, normalizedPunjabi, voice, speed, pitch, fileName]
       );
 
-      audioUrl = `/cache/${fileName}`;
+      audioUrl = `${API_PUBLIC_BASE_URL}/cache/${fileName}`;
     }
 
     await logUsage(trackingId, "tts", rawText.length);
