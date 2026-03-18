@@ -1216,18 +1216,19 @@ app.post("/api/tts", async (req, res) => {
       [cacheKey]
     );
 
-    let audioUrl = "";
+    let audioBase64 = "";
     let wasCached = false;
 
     if (existing) {
       const cachedFilePath = path.join(CACHE_DIR, existing.file_name);
       if (fs.existsSync(cachedFilePath)) {
-        audioUrl = `${API_PUBLIC_BASE_URL}/cache/${existing.file_name}`;
+        const buffer = fs.readFileSync(cachedFilePath);
+        audioBase64 = buffer.toString("base64");
         wasCached = true;
       }
     }
 
-    if (!audioUrl) {
+    if (!audioBase64) {
       const [response] = await ttsClient.synthesizeSpeech({
         input: { text: rawText },
         voice: { languageCode: "pa-IN", name: voice },
@@ -1241,7 +1242,11 @@ app.post("/api/tts", async (req, res) => {
       const fileName = `${cacheKey}.mp3`;
       const filePath = path.join(CACHE_DIR, fileName);
 
-      fs.writeFileSync(filePath, response.audioContent, "binary");
+      const buffer = Buffer.isBuffer(response.audioContent)
+        ? response.audioContent
+        : Buffer.from(response.audioContent, "binary");
+
+      fs.writeFileSync(filePath, buffer);
 
       await dbRun(
         `INSERT INTO tts_cache (cache_key, text, voice, speed, pitch, file_name)
@@ -1250,17 +1255,21 @@ app.post("/api/tts", async (req, res) => {
         [cacheKey, normalizedPunjabi, voice, speed, pitch, fileName]
       );
 
-      audioUrl = `${API_PUBLIC_BASE_URL}/cache/${fileName}`;
+      audioBase64 = buffer.toString("base64");
     }
 
     await logUsage(trackingId, "tts", rawText.length);
     await logRequest("tts", wasCached ? "hit" : "miss", rawText.length, trackingId);
 
     if (req.user?.id) {
-      await saveAudioHistory(req.user.id, rawText, voice, speed, pitch, audioUrl);
+      await saveAudioHistory(req.user.id, rawText, voice, speed, pitch, "");
     }
 
-    return res.json({ audioUrl, cached: wasCached });
+    return res.json({
+      audioBase64,
+      mimeType: "audio/mpeg",
+      cached: wasCached
+    });
   } catch (err) {
     console.error("tts error:", err);
     return res.status(500).json({
@@ -1269,7 +1278,6 @@ app.post("/api/tts", async (req, res) => {
     });
   }
 });
-
 
 
 async function startServer() {
