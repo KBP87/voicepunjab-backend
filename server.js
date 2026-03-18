@@ -1270,9 +1270,7 @@ app.post("/api/tts", async (req, res) => {
   }
 });
 
-app.get(/^(?!\/api\/|\/health|\/cache\/).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
+
 
 async function startServer() {
   try {
@@ -1307,5 +1305,18 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+app.get("/", (req, res) => {
+  res.json({
+    message: "VoicePunjab API is running.",
+    health: "/health"
+  });
+});
+
+app.use((req, res) => {
+  res.status(404).json({
+    error: "Route not found"
+  });
+});
 
 startServer();
