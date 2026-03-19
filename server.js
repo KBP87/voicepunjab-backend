@@ -4,9 +4,6 @@ if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
 
-const { Resend } = require("resend");
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -15,8 +12,8 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const nodemailer = require("nodemailer");
 const { Pool } = require("pg");
+const { Resend } = require("resend");
 const textToSpeech = require("@google-cloud/text-to-speech");
 const { TranslationServiceClient } = require("@google-cloud/translate").v3;
 
@@ -35,14 +32,9 @@ const API_PUBLIC_BASE_URL = String(
     "https://voicepunjab-api-777821135954.us-central1.run.app"
 ).trim();
 
-const SMTP_HOST = String(process.env.SMTP_HOST || "").trim();
-const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
-const SMTP_SECURE = String(process.env.SMTP_SECURE || "true").trim() === "true";
-const SMTP_USER = String(process.env.SMTP_USER || "").trim();
-const SMTP_PASS = String(process.env.SMTP_PASS || "").trim();
-const SMTP_FROM = String(
-  process.env.SMTP_FROM || "VoicePunjabAI <support@voicepunjabai.com>"
-).trim();
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 const GOOGLE_CLOUD_PROJECT =
   process.env.GOOGLE_CLOUD_PROJECT ||
@@ -136,20 +128,6 @@ function getPoolConfig() {
 }
 
 const pool = new Pool(getPoolConfig());
-
-let mailer = null;
-
-if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-  mailer = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
-}
 
 async function dbGet(sql, params = []) {
   const result = await pool.query(sql, params);
@@ -358,56 +336,75 @@ async function createVerificationToken(userId) {
 }
 
 async function sendVerificationEmail(user, token) {
+  const verifyUrl = `${API_PUBLIC_BASE_URL}/api/verify-email?token=${encodeURIComponent(token)}`;
 
-  const verifyUrl = `${API_PUBLIC_BASE_URL}/api/verify-email?token=${token}`;
+  console.log("Verification URL for", user.email, ":", verifyUrl);
 
-  console.log("Verification URL:", verifyUrl);
-
-  try {
-
-    await resend.emails.send({
-      from: "VoicePunjabAI <onboarding@resend.dev>",
-      to: user.email,
-      subject: "Verify your VoicePunjabAI email",
-      html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.7">
-
-      <p>Hello,</p>
-
-      <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
-
-      <p>Please verify your email by clicking the link below:</p>
-
-      <p>
-      <a href="${verifyUrl}" 
-      style="background:#4f46e5;color:white;padding:12px 18px;
-      border-radius:8px;text-decoration:none;font-weight:bold">
-      Verify Email
-      </a>
-      </p>
-
-      <p>If the button does not work, open this link:</p>
-
-      <p>${verifyUrl}</p>
-
-      <p>If you did not create this account, you can ignore this email.</p>
-
-      <p>VoicePunjabAI Team</p>
-
-      </div>
-      `
-    });
-
-    console.log("Verification email sent");
-
-  } catch (err) {
-
-    console.error("Email send failed:", err);
-
+  if (!resend) {
+    console.log("Verification email not sent because Resend is not configured.");
+    return;
   }
 
-}
+  const { error } = await resend.emails.send({
+    from: "VoicePunjabAI <onboarding@resend.dev>",
+    to: user.email,
+    subject: "Verify your VoicePunjabAI email",
+    text: `Hello,
 
+Thank you for signing up for VoicePunjabAI.
+
+Please verify your email by clicking the link below:
+
+${verifyUrl}
+
+If you did not create this account, you can ignore this email.
+
+VoicePunjabAI Team`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
+        <p>Hello,</p>
+
+        <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
+
+        <p>Please verify your email by clicking the button below:</p>
+
+        <p style="margin:24px 0;">
+          <a
+            href="${verifyUrl}"
+            style="
+              display:inline-block;
+              padding:12px 18px;
+              background:#4f46e5;
+              color:#ffffff;
+              text-decoration:none;
+              border-radius:8px;
+              font-weight:700;
+            "
+          >
+            Verify Email
+          </a>
+        </p>
+
+        <p>If the button does not work, open this link:</p>
+
+        <p style="word-break:break-word;">
+          <a href="${verifyUrl}">${verifyUrl}</a>
+        </p>
+
+        <p>If you did not create this account, you can ignore this email.</p>
+
+        <p>VoicePunjabAI Team</p>
+      </div>
+    `
+  });
+
+  if (error) {
+    console.error("Verification email send failed:", error);
+    throw new Error(error.message || "Verification email failed");
+  }
+
+  console.log("Verification email sent successfully to", user.email);
+}
 
 async function createPasswordResetToken(userId) {
   const token = makeVerificationToken();
@@ -426,16 +423,15 @@ async function createPasswordResetToken(userId) {
 async function sendPasswordResetEmail(user, token) {
   const resetUrl = `${APP_BASE_URL}/reset-password.html?token=${encodeURIComponent(token)}`;
 
-  if (!mailer) {
-    console.log("Password reset email not sent because SMTP is not configured.");
+  if (!resend) {
+    console.log("Password reset email not sent because Resend is not configured.");
     console.log("Password reset URL:", resetUrl);
     return;
   }
 
-  const info = await mailer.sendMail({
-    from: SMTP_FROM,
+  const { error } = await resend.emails.send({
+    from: "VoicePunjabAI <onboarding@resend.dev>",
     to: user.email,
-    replyTo: "support@voicepunjabai.com",
     subject: "Reset your VoicePunjabAI password",
     text: `Hello ${user.name},
 
@@ -444,23 +440,49 @@ ${resetUrl}
 
 If you did not request this, you can ignore this email.
 
-VoicePunjabAI`,
-    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
-      <p>Hello ${user.name},</p>
-      <p>Click below to reset your password:</p>
-      <p>
-        <a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#ffffff;text-decoration:none;border-radius:8px;">
-          Reset Password
-        </a>
-      </p>
-      <p>If the button does not work, open this link:</p>
-      <p><a href="${resetUrl}">${resetUrl}</a></p>
-      <p>If you did not request this, you can ignore this email.</p>
-      <p>VoicePunjabAI</p>
-    </div>`
+VoicePunjabAI Team`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
+        <p>Hello ${user.name},</p>
+
+        <p>Click the button below to reset your password:</p>
+
+        <p style="margin:24px 0;">
+          <a
+            href="${resetUrl}"
+            style="
+              display:inline-block;
+              padding:12px 18px;
+              background:#4f46e5;
+              color:#ffffff;
+              text-decoration:none;
+              border-radius:8px;
+              font-weight:700;
+            "
+          >
+            Reset Password
+          </a>
+        </p>
+
+        <p>If the button does not work, open this link:</p>
+
+        <p style="word-break:break-word;">
+          <a href="${resetUrl}">${resetUrl}</a>
+        </p>
+
+        <p>If you did not request this, you can ignore this email.</p>
+
+        <p>VoicePunjabAI Team</p>
+      </div>
+    `
   });
 
-  console.log("Password reset email sent:", info.messageId);
+  if (error) {
+    console.error("Password reset email send failed:", error);
+    throw new Error(error.message || "Password reset email failed");
+  }
+
+  console.log("Password reset email sent successfully to", user.email);
 }
 
 async function loadUserFromToken(req, res, next) {
@@ -848,7 +870,23 @@ app.get("/api/verify-email", async (req, res) => {
     const token = normalizeText(req.query?.token);
 
     if (!token) {
-      return res.redirect(`${APP_BASE_URL}/login.html?verified=0`);
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>Verification Failed</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          </head>
+          <body style="font-family:Arial,sans-serif;background:#f6f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+            <div style="background:#fff;padding:32px;border-radius:16px;max-width:520px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;">
+              <h1 style="margin:0 0 12px;color:#dc2626;">Verification Failed</h1>
+              <p style="color:#555;line-height:1.7;">This verification link is missing or invalid.</p>
+              <a href="${APP_BASE_URL}/login.html" style="display:inline-block;margin-top:18px;padding:12px 18px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+                Go to Login
+              </a>
+            </div>
+          </body>
+        </html>
+      `);
     }
 
     const row = await dbGet(
@@ -859,23 +897,91 @@ app.get("/api/verify-email", async (req, res) => {
     );
 
     if (!row) {
-      return res.redirect(`${APP_BASE_URL}/login.html?verified=0`);
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>Verification Failed</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          </head>
+          <body style="font-family:Arial,sans-serif;background:#f6f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+            <div style="background:#fff;padding:32px;border-radius:16px;max-width:520px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;">
+              <h1 style="margin:0 0 12px;color:#dc2626;">Verification Failed</h1>
+              <p style="color:#555;line-height:1.7;">This verification link is invalid or has already been used.</p>
+              <a href="${APP_BASE_URL}/login.html" style="display:inline-block;margin-top:18px;padding:12px 18px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+                Go to Login
+              </a>
+            </div>
+          </body>
+        </html>
+      `);
     }
 
     const expired = new Date(row.expires_at).getTime() < Date.now();
 
     if (expired) {
       await dbRun(`DELETE FROM email_verification_tokens WHERE id = $1`, [row.id]);
-      return res.redirect(`${APP_BASE_URL}/login.html?verified=0`);
+
+      return res.status(400).send(`
+        <html>
+          <head>
+            <title>Link Expired</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          </head>
+          <body style="font-family:Arial,sans-serif;background:#f6f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+            <div style="background:#fff;padding:32px;border-radius:16px;max-width:520px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;">
+              <h1 style="margin:0 0 12px;color:#dc2626;">Link Expired</h1>
+              <p style="color:#555;line-height:1.7;">Your verification link has expired. Please go back to login and resend the verification email.</p>
+              <a href="${APP_BASE_URL}/login.html" style="display:inline-block;margin-top:18px;padding:12px 18px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+                Go to Login
+              </a>
+            </div>
+          </body>
+        </html>
+      `);
     }
 
     await dbRun(`UPDATE users SET is_verified = TRUE WHERE id = $1`, [row.user_id]);
     await dbRun(`DELETE FROM email_verification_tokens WHERE user_id = $1`, [row.user_id]);
 
-    return res.redirect(`${APP_BASE_URL}/login.html?verified=1`);
+    return res.send(`
+      <html>
+        <head>
+          <title>Email Verified</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body style="font-family:Arial,sans-serif;background:#f6f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+          <div style="background:#fff;padding:32px;border-radius:16px;max-width:520px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;">
+            <div style="font-size:46px;margin-bottom:8px;">✅</div>
+            <h1 style="margin:0 0 12px;color:#111827;">Email verified successfully</h1>
+            <p style="color:#555;line-height:1.7;">
+              Your VoicePunjabAI account is now verified. You can log in and start using Punjabi text-to-speech.
+            </p>
+            <a href="${APP_BASE_URL}/login.html?verified=1" style="display:inline-block;margin-top:18px;padding:12px 18px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+              Go to Login
+            </a>
+          </div>
+        </body>
+      </html>
+    `);
   } catch (err) {
     console.error("verify email error:", err);
-    return res.redirect(`${APP_BASE_URL}/login.html?verified=0`);
+    return res.status(500).send(`
+      <html>
+        <head>
+          <title>Verification Error</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        </head>
+        <body style="font-family:Arial,sans-serif;background:#f6f7fb;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+          <div style="background:#fff;padding:32px;border-radius:16px;max-width:520px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;">
+            <h1 style="margin:0 0 12px;color:#dc2626;">Verification Error</h1>
+            <p style="color:#555;line-height:1.7;">Something went wrong while verifying your email. Please try again later.</p>
+            <a href="${APP_BASE_URL}/login.html" style="display:inline-block;margin-top:18px;padding:12px 18px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+              Go to Login
+            </a>
+          </div>
+        </body>
+      </html>
+    `);
   }
 });
 
@@ -1295,8 +1401,8 @@ app.post("/api/tts", async (req, res) => {
 
 app.get("/api/test-email", async (req, res) => {
   try {
-    if (!mailer) {
-      return res.status(500).json({ error: "Mailer not configured." });
+    if (!resend) {
+      return res.status(500).json({ error: "Resend not configured." });
     }
 
     const to = String(req.query.to || "").trim();
@@ -1305,31 +1411,37 @@ app.get("/api/test-email", async (req, res) => {
       return res.status(400).json({ error: "Add ?to=youremail@example.com" });
     }
 
-    const info = await mailer.sendMail({
-      from: SMTP_FROM,
+    const { error } = await resend.emails.send({
+      from: "VoicePunjabAI <onboarding@resend.dev>",
       to,
-      replyTo: "support@voicepunjabai.com",
       subject: "VoicePunjabAI test email",
       text: `Hello,
 
 This is a test email from VoicePunjabAI.
 
-If you received this message, your SMTP delivery is working.
+If you received this message, your email delivery is working.
 
 VoicePunjabAI Team`,
       html: `
         <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
           <p>Hello,</p>
           <p>This is a test email from <strong>VoicePunjabAI</strong>.</p>
-          <p>If you received this message, your SMTP delivery is working.</p>
+          <p>If you received this message, your email delivery is working.</p>
           <p>VoicePunjabAI Team</p>
         </div>
       `
     });
 
+    if (error) {
+      console.error("test email error:", error);
+      return res.status(500).json({
+        error: "Test email failed.",
+        details: error.message || "Unknown email error"
+      });
+    }
+
     return res.json({
-      message: "Test email sent.",
-      messageId: info.messageId
+      message: "Test email sent."
     });
   } catch (err) {
     console.error("test email error:", err);
@@ -1365,9 +1477,7 @@ async function startServer() {
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`VoicePunjab API running on port ${PORT}`);
-      console.log("SMTP_HOST =", SMTP_HOST || "(missing)");
-      console.log("SMTP_USER =", SMTP_USER || "(missing)");
-      console.log("SMTP_FROM =", SMTP_FROM || "(missing)");
+      console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
     });
   } catch (err) {
     console.error("Server startup failed:", err);
