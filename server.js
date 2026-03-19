@@ -369,27 +369,53 @@ async function sendVerificationEmail(user, token) {
     to: user.email,
     replyTo: "support@voicepunjabai.com",
     subject: "Verify your VoicePunjabAI email",
-    text: `Hello ${user.name},
+    text: `Hello,
 
-Please verify your email by opening this link:
+Thank you for signing up for VoicePunjabAI.
+
+Please verify your email by clicking the link below:
+
 ${verifyUrl}
 
-This link expires in 24 hours.
+If you did not create this account, you can ignore this email.
 
-VoicePunjabAI`,
-    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#222;">
-      <p>Hello ${user.name},</p>
-      <p>Please verify your email by clicking the button below:</p>
-      <p>
-        <a href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#ffffff;text-decoration:none;border-radius:8px;">
-          Verify Email
-        </a>
-      </p>
-      <p>If the button does not work, open this link:</p>
-      <p><a href="${verifyUrl}">${verifyUrl}</a></p>
-      <p>This link expires in 24 hours.</p>
-      <p>VoicePunjabAI</p>
-    </div>`
+VoicePunjabAI Team`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
+        <p>Hello,</p>
+
+        <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
+
+        <p>Please verify your email by clicking the button below:</p>
+
+        <p style="margin:24px 0;">
+          <a
+            href="${verifyUrl}"
+            style="
+              display:inline-block;
+              padding:12px 18px;
+              background:#4f46e5;
+              color:#ffffff;
+              text-decoration:none;
+              border-radius:8px;
+              font-weight:700;
+            "
+          >
+            Verify Email
+          </a>
+        </p>
+
+        <p>If the button does not work, open this link:</p>
+
+        <p style="word-break:break-word;">
+          <a href="${verifyUrl}">${verifyUrl}</a>
+        </p>
+
+        <p>If you did not create this account, you can ignore this email.</p>
+
+        <p>VoicePunjabAI Team</p>
+      </div>
+    `
   });
 
   console.log("Verification email sent:", info.messageId);
@@ -1279,6 +1305,52 @@ app.post("/api/tts", async (req, res) => {
   }
 });
 
+app.get("/api/test-email", async (req, res) => {
+  try {
+    if (!mailer) {
+      return res.status(500).json({ error: "Mailer not configured." });
+    }
+
+    const to = String(req.query.to || "").trim();
+
+    if (!to) {
+      return res.status(400).json({ error: "Add ?to=youremail@example.com" });
+    }
+
+    const info = await mailer.sendMail({
+      from: SMTP_FROM,
+      to,
+      replyTo: "support@voicepunjabai.com",
+      subject: "VoicePunjabAI test email",
+      text: `Hello,
+
+This is a test email from VoicePunjabAI.
+
+If you received this message, your SMTP delivery is working.
+
+VoicePunjabAI Team`,
+      html: `
+        <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
+          <p>Hello,</p>
+          <p>This is a test email from <strong>VoicePunjabAI</strong>.</p>
+          <p>If you received this message, your SMTP delivery is working.</p>
+          <p>VoicePunjabAI Team</p>
+        </div>
+      `
+    });
+
+    return res.json({
+      message: "Test email sent.",
+      messageId: info.messageId
+    });
+  } catch (err) {
+    console.error("test email error:", err);
+    return res.status(500).json({
+      error: "Test email failed.",
+      details: err.message
+    });
+  }
+});
 
 async function startServer() {
   try {
