@@ -1307,6 +1307,7 @@ async function startServer() {
       console.log(`VoicePunjab API running on port ${PORT}`);
       console.log("SMTP_HOST =", SMTP_HOST || "(missing)");
       console.log("SMTP_USER =", SMTP_USER || "(missing)");
+      console.log("SMTP_FROM =", SMTP_FROM || "(missing)");
     });
   } catch (err) {
     console.error("Server startup failed:", err);
