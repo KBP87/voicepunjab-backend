@@ -346,7 +346,7 @@ async function sendVerificationEmail(user, token) {
   }
 
   const { error } = await resend.emails.send({
-    from: "VoicePunjabAI <onboarding@resend.dev>",
+    from: "VoicePunjabAI <support@send.voicepunjabai.com>",
     to: user.email,
     subject: "Verify your VoicePunjabAI email",
     text: `Hello,
@@ -430,7 +430,7 @@ async function sendPasswordResetEmail(user, token) {
   }
 
   const { error } = await resend.emails.send({
-    from: "VoicePunjabAI <onboarding@resend.dev>",
+    from: "VoicePunjabAI <support@send.voicepunjabai.com>",
     to: user.email,
     subject: "Reset your VoicePunjabAI password",
     text: `Hello ${user.name},
@@ -1412,7 +1412,7 @@ app.get("/api/test-email", async (req, res) => {
     }
 
     const { error } = await resend.emails.send({
-      from: "VoicePunjabAI <onboarding@resend.dev>",
+      from: "VoicePunjabAI <support@send.voicepunjabai.com>",
       to,
       subject: "VoicePunjabAI test email",
       text: `Hello,
