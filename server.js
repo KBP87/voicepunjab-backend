@@ -33,10 +33,13 @@ const API_PUBLIC_BASE_URL = String(
 ).trim();
 
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
-
 const RESEND_FROM = String(
   process.env.RESEND_FROM || "VoicePunjabAI Support <support@voicepunjabai.com>"
 ).trim();
+
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+const ADMIN_NAME = String(process.env.ADMIN_NAME || "VoicePunjab Admin").trim();
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
@@ -337,6 +340,39 @@ async function createVerificationToken(userId) {
   );
 
   return token;
+}
+
+async function ensureAdminUser() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.log("Admin bootstrap skipped: ADMIN_EMAIL or ADMIN_PASSWORD missing.");
+    return;
+  }
+
+  const existing = await dbGet(
+    `SELECT id, email, is_admin FROM users WHERE email = $1`,
+    [ADMIN_EMAIL]
+  );
+
+  if (existing) {
+    await dbRun(
+      `UPDATE users
+       SET is_admin = TRUE, is_verified = TRUE
+       WHERE email = $1`,
+      [ADMIN_EMAIL]
+    );
+    console.log("Admin user ensured for existing account:", ADMIN_EMAIL);
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+
+  await dbRun(
+    `INSERT INTO users (name, email, password_hash, plan, is_verified, is_admin)
+     VALUES ($1, $2, $3, 'free', TRUE, TRUE)`,
+    [ADMIN_NAME, ADMIN_EMAIL, passwordHash]
+  );
+
+  console.log("Admin user created:", ADMIN_EMAIL);
 }
 
 async function sendVerificationEmail(user, token) {
@@ -1463,6 +1499,8 @@ async function startServer() {
     await initDatabase();
     console.log("initDatabase finished successfully.");
 
+    await ensureAdminUser();
+
     const tables = await dbAll(`
       SELECT table_schema, table_name
       FROM information_schema.tables
@@ -1476,6 +1514,7 @@ async function startServer() {
       console.log(`VoicePunjab API running on port ${PORT}`);
       console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
       console.log("RESEND_FROM =", RESEND_FROM || "(missing)");
+      console.log("ADMIN_EMAIL =", ADMIN_EMAIL || "(missing)");
     });
   } catch (err) {
     console.error("Server startup failed:", err);
