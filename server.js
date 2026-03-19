@@ -33,6 +33,9 @@ const API_PUBLIC_BASE_URL = String(
 ).trim();
 
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+const RESEND_FROM = String(
+  process.env.RESEND_FROM || "VoicePunjabAI Support <support@send.voicepunjabai.com>"
+).trim();
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
@@ -342,11 +345,11 @@ async function sendVerificationEmail(user, token) {
 
   if (!resend) {
     console.log("Verification email not sent because Resend is not configured.");
-    return;
+    throw new Error("Resend is not configured");
   }
 
-  const { error } = await resend.emails.send({
-    from: "VoicePunjabAI <support@send.voicepunjabai.com>",
+  const response = await resend.emails.send({
+    from: RESEND_FROM,
     to: user.email,
     subject: "Verify your VoicePunjabAI email",
     text: `Hello,
@@ -363,11 +366,8 @@ VoicePunjabAI Team`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
         <p>Hello,</p>
-
         <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
-
         <p>Please verify your email by clicking the button below:</p>
-
         <p style="margin:24px 0;">
           <a
             href="${verifyUrl}"
@@ -384,26 +384,22 @@ VoicePunjabAI Team`,
             Verify Email
           </a>
         </p>
-
         <p>If the button does not work, open this link:</p>
-
         <p style="word-break:break-word;">
           <a href="${verifyUrl}">${verifyUrl}</a>
         </p>
-
         <p>If you did not create this account, you can ignore this email.</p>
-
         <p>VoicePunjabAI Team</p>
       </div>
     `
   });
 
-  if (error) {
-    console.error("Verification email send failed:", error);
-    throw new Error(error.message || "Verification email failed");
+  if (response?.error) {
+    console.error("Verification email send failed:", response.error);
+    throw new Error(response.error.message || "Verification email failed");
   }
 
-  console.log("Verification email sent successfully to", user.email);
+  console.log("Verification email sent successfully to", user.email, response?.data?.id || "");
 }
 
 async function createPasswordResetToken(userId) {
@@ -425,12 +421,11 @@ async function sendPasswordResetEmail(user, token) {
 
   if (!resend) {
     console.log("Password reset email not sent because Resend is not configured.");
-    console.log("Password reset URL:", resetUrl);
-    return;
+    throw new Error("Resend is not configured");
   }
 
-  const { error } = await resend.emails.send({
-    from: "VoicePunjabAI <support@send.voicepunjabai.com>",
+  const response = await resend.emails.send({
+    from: RESEND_FROM,
     to: user.email,
     subject: "Reset your VoicePunjabAI password",
     text: `Hello ${user.name},
@@ -444,9 +439,7 @@ VoicePunjabAI Team`,
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
         <p>Hello ${user.name},</p>
-
         <p>Click the button below to reset your password:</p>
-
         <p style="margin:24px 0;">
           <a
             href="${resetUrl}"
@@ -463,26 +456,22 @@ VoicePunjabAI Team`,
             Reset Password
           </a>
         </p>
-
         <p>If the button does not work, open this link:</p>
-
         <p style="word-break:break-word;">
           <a href="${resetUrl}">${resetUrl}</a>
         </p>
-
         <p>If you did not request this, you can ignore this email.</p>
-
         <p>VoicePunjabAI Team</p>
       </div>
     `
   });
 
-  if (error) {
-    console.error("Password reset email send failed:", error);
-    throw new Error(error.message || "Password reset email failed");
+  if (response?.error) {
+    console.error("Password reset email send failed:", response.error);
+    throw new Error(response.error.message || "Password reset email failed");
   }
 
-  console.log("Password reset email sent successfully to", user.email);
+  console.log("Password reset email sent successfully to", user.email, response?.data?.id || "");
 }
 
 async function loadUserFromToken(req, res, next) {
@@ -768,10 +757,8 @@ app.post("/api/signup", async (req, res) => {
       });
     } catch (mailErr) {
       console.error("verification email send failed:", mailErr);
-
-      return res.json({
-        message:
-          "Account created, but verification email could not be delivered right now. Please use Resend Verification from the login page."
+      return res.status(500).json({
+        error: "Account created, but verification email could not be delivered right now. Please use Resend Verification from the login page."
       });
     }
   } catch (err) {
@@ -1411,8 +1398,8 @@ app.get("/api/test-email", async (req, res) => {
       return res.status(400).json({ error: "Add ?to=youremail@example.com" });
     }
 
-    const { error } = await resend.emails.send({
-      from: "VoicePunjabAI <support@send.voicepunjabai.com>",
+    const response = await resend.emails.send({
+      from: RESEND_FROM,
       to,
       subject: "VoicePunjabAI test email",
       text: `Hello,
@@ -1432,11 +1419,11 @@ VoicePunjabAI Team`,
       `
     });
 
-    if (error) {
-      console.error("test email error:", error);
+    if (response?.error) {
+      console.error("test email error:", response.error);
       return res.status(500).json({
         error: "Test email failed.",
-        details: error.message || "Unknown email error"
+        details: response.error.message || "Unknown email error"
       });
     }
 
@@ -1478,6 +1465,7 @@ async function startServer() {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`VoicePunjab API running on port ${PORT}`);
       console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
+      console.log("RESEND_FROM =", RESEND_FROM || "(missing)");
     });
   } catch (err) {
     console.error("Server startup failed:", err);
