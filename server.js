@@ -4,6 +4,9 @@ if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
 
+const { Resend } = require("resend");
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -355,71 +358,56 @@ async function createVerificationToken(userId) {
 }
 
 async function sendVerificationEmail(user, token) {
-  const verifyUrl = `${API_PUBLIC_BASE_URL}/api/verify-email?token=${encodeURIComponent(token)}`;
 
-  console.log("Verification URL for", user.email, ":", verifyUrl);
+  const verifyUrl = `${API_PUBLIC_BASE_URL}/api/verify-email?token=${token}`;
 
-  if (!mailer) {
-    console.log("Verification email not sent because SMTP is not configured.");
-    return;
+  console.log("Verification URL:", verifyUrl);
+
+  try {
+
+    await resend.emails.send({
+      from: "VoicePunjabAI <onboarding@resend.dev>",
+      to: user.email,
+      subject: "Verify your VoicePunjabAI email",
+      html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.7">
+
+      <p>Hello,</p>
+
+      <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
+
+      <p>Please verify your email by clicking the link below:</p>
+
+      <p>
+      <a href="${verifyUrl}" 
+      style="background:#4f46e5;color:white;padding:12px 18px;
+      border-radius:8px;text-decoration:none;font-weight:bold">
+      Verify Email
+      </a>
+      </p>
+
+      <p>If the button does not work, open this link:</p>
+
+      <p>${verifyUrl}</p>
+
+      <p>If you did not create this account, you can ignore this email.</p>
+
+      <p>VoicePunjabAI Team</p>
+
+      </div>
+      `
+    });
+
+    console.log("Verification email sent");
+
+  } catch (err) {
+
+    console.error("Email send failed:", err);
+
   }
 
-  const info = await mailer.sendMail({
-    from: SMTP_FROM,
-    to: user.email,
-    replyTo: "support@voicepunjabai.com",
-    subject: "Verify your VoicePunjabAI email",
-    text: `Hello,
-
-Thank you for signing up for VoicePunjabAI.
-
-Please verify your email by clicking the link below:
-
-${verifyUrl}
-
-If you did not create this account, you can ignore this email.
-
-VoicePunjabAI Team`,
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.7;color:#222;max-width:600px;">
-        <p>Hello,</p>
-
-        <p>Thank you for signing up for <strong>VoicePunjabAI</strong>.</p>
-
-        <p>Please verify your email by clicking the button below:</p>
-
-        <p style="margin:24px 0;">
-          <a
-            href="${verifyUrl}"
-            style="
-              display:inline-block;
-              padding:12px 18px;
-              background:#4f46e5;
-              color:#ffffff;
-              text-decoration:none;
-              border-radius:8px;
-              font-weight:700;
-            "
-          >
-            Verify Email
-          </a>
-        </p>
-
-        <p>If the button does not work, open this link:</p>
-
-        <p style="word-break:break-word;">
-          <a href="${verifyUrl}">${verifyUrl}</a>
-        </p>
-
-        <p>If you did not create this account, you can ignore this email.</p>
-
-        <p>VoicePunjabAI Team</p>
-      </div>
-    `
-  });
-
-  console.log("Verification email sent:", info.messageId);
 }
+
 
 async function createPasswordResetToken(userId) {
   const token = makeVerificationToken();
