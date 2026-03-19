@@ -33,8 +33,9 @@ const API_PUBLIC_BASE_URL = String(
 ).trim();
 
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+
 const RESEND_FROM = String(
-  process.env.RESEND_FROM || "VoicePunjabAI Support <support@send.voicepunjabai.com>"
+  process.env.RESEND_FROM || "VoicePunjabAI Support <support@voicepunjabai.com>"
 ).trim();
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
@@ -399,7 +400,11 @@ VoicePunjabAI Team`,
     throw new Error(response.error.message || "Verification email failed");
   }
 
-  console.log("Verification email sent successfully to", user.email, response?.data?.id || "");
+  console.log(
+    "Verification email sent successfully to",
+    user.email,
+    response?.data?.id || ""
+  );
 }
 
 async function createPasswordResetToken(userId) {
@@ -471,7 +476,11 @@ VoicePunjabAI Team`,
     throw new Error(response.error.message || "Password reset email failed");
   }
 
-  console.log("Password reset email sent successfully to", user.email, response?.data?.id || "");
+  console.log(
+    "Password reset email sent successfully to",
+    user.email,
+    response?.data?.id || ""
+  );
 }
 
 async function loadUserFromToken(req, res, next) {
@@ -758,7 +767,8 @@ app.post("/api/signup", async (req, res) => {
     } catch (mailErr) {
       console.error("verification email send failed:", mailErr);
       return res.status(500).json({
-        error: "Account created, but verification email could not be delivered right now. Please use Resend Verification from the login page."
+        error:
+          "Account created, but verification email could not be delivered right now. Please use Resend Verification from the login page."
       });
     }
   } catch (err) {
