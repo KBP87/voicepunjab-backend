@@ -55,6 +55,8 @@ const GOOGLE_APPLICATION_CREDENTIALS =
 const GOOGLE_CREDENTIALS_JSON =
   process.env.GOOGLE_CREDENTIALS_JSON || "";
 
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+
 const DB_USER = String(process.env.DB_USER || "").trim();
 const DB_PASS = String(process.env.DB_PASS || "").trim();
 const DB_NAME = String(process.env.DB_NAME || "").trim();
@@ -110,6 +112,18 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 function getPoolConfig() {
+  if (DATABASE_URL) {
+    return {
+      connectionString: DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false
+      },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000
+    };
+  }
+
   const baseConfig = {
     user: DB_USER,
     password: DB_PASS,
@@ -1488,6 +1502,7 @@ VoicePunjabAI Team`,
 async function startServer() {
   try {
     console.log("Starting server...");
+    console.log("DATABASE_URL =", DATABASE_URL ? "(set)" : "(missing)");
     console.log("Connected DB_NAME =", DB_NAME || "(missing)");
     console.log("Connected DB_USER =", DB_USER || "(missing)");
     console.log("INSTANCE_CONNECTION_NAME =", INSTANCE_CONNECTION_NAME || "(missing)");
