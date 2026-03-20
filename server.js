@@ -1,5 +1,13 @@
 "use strict";
 
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
+
 if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
@@ -57,14 +65,10 @@ const GOOGLE_CREDENTIALS_JSON =
 
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 
-const DB_USER = String(process.env.DB_USER || "").trim();
-const DB_PASS = String(process.env.DB_PASS || "").trim();
-const DB_NAME = String(process.env.DB_NAME || "").trim();
-const INSTANCE_CONNECTION_NAME = String(
-  process.env.INSTANCE_CONNECTION_NAME || ""
-).trim();
-const DB_HOST = String(process.env.DB_HOST || "").trim();
-const DB_PORT = Number(process.env.DB_PORT || 5432);
+if (!DATABASE_URL) {
+  console.error("❌ DATABASE_URL missing");
+  process.exit(1);
+}
 
 const clientConfig = {
   projectId: GOOGLE_CLOUD_PROJECT
@@ -111,47 +115,17 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-function getPoolConfig() {
-  if (!DATABASE_URL) {
-    throw new Error("DATABASE_URL is required (Neon not configured)");
-  }
+console.log("Using DB:", DATABASE_URL ? "Neon ✅" : "Missing ❌");
 
-  return {
-    connectionString: DATABASE_URL,
-    ssl: {
-      rejectUnauthorized: false
-    },
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
-  };
-}
-
-  const baseConfig = {
-    user: DB_USER,
-    password: DB_PASS,
-    database: DB_NAME,
-    max: 10,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
-  };
-
-  if (INSTANCE_CONNECTION_NAME) {
-    return {
-      ...baseConfig,
-      host: `/cloudsql/${INSTANCE_CONNECTION_NAME}`,
-      port: 5432
-    };
-  }
-
-  return {
-    ...baseConfig,
-    host: DB_HOST || "127.0.0.1",
-    port: DB_PORT
-  };
-}
-
-const pool = new Pool(getPoolConfig());
+const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
 
 async function dbGet(sql, params = []) {
   const result = await pool.query(sql, params);
@@ -1502,34 +1476,43 @@ VoicePunjabAI Team`,
   }
 });
 
-async function startServer() {
-  app.listen(PORT, "0.0.0.0", async () => {
+async function initializeApp() {
+  try {
+    await dbGet("SELECT 1 AS ok");
+    console.log("Database connected successfully.");
+
+    await initDatabase();
+    console.log("initDatabase finished successfully.");
+
+    await ensureAdminUser();
+
+    const tables = await dbAll(`
+      SELECT table_schema, table_name
+      FROM information_schema.tables
+      WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+      ORDER BY table_schema, table_name
+    `);
+
+    console.log("Tables after init:", tables);
+  } catch (err) {
+    console.error("Startup DB init failed:", err);
+  }
+}
+
+function startServer() {
+  console.log("Starting VoicePunjab API...");
+  console.log("PORT =", PORT);
+  console.log("DATABASE_URL =", DATABASE_URL ? "(set)" : "(missing)");
+  console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
+  console.log("ADMIN_EMAIL =", ADMIN_EMAIL || "(missing)");
+
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`VoicePunjab API running on port ${PORT}`);
-    console.log("DATABASE_URL =", DATABASE_URL ? "(set)" : "(missing)");
-    console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
-    console.log("RESEND_FROM =", RESEND_FROM || "(missing)");
-    console.log("ADMIN_EMAIL =", ADMIN_EMAIL || "(missing)");
+    initializeApp();
+  });
 
-    try {
-      await dbGet("SELECT 1 AS ok");
-      console.log("Database connected successfully.");
-
-      await initDatabase();
-      console.log("initDatabase finished successfully.");
-
-      await ensureAdminUser();
-
-      const tables = await dbAll(`
-        SELECT table_schema, table_name
-        FROM information_schema.tables
-        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY table_schema, table_name
-      `);
-
-      console.log("Tables after init:", tables);
-    } catch (err) {
-      console.error("Startup DB init failed:", err);
-    }
+  server.on("error", (err) => {
+    console.error("Server listen error:", err);
   });
 }
 
