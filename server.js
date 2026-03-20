@@ -1508,7 +1508,13 @@ async function startServer() {
     console.log("INSTANCE_CONNECTION_NAME =", INSTANCE_CONNECTION_NAME || "(missing)");
     console.log("DB_HOST =", DB_HOST || "(not set)");
 
-    await dbGet("SELECT 1 AS ok");
+    try {
+  await dbGet("SELECT 1 AS ok");
+  console.log("Database connected successfully.");
+} catch (err) {
+  console.error("DB connection failed:", err.message);
+}
+
     console.log("Database connected successfully.");
 
     await initDatabase();
