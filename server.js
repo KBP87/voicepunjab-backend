@@ -112,17 +112,20 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 function getPoolConfig() {
-  if (DATABASE_URL) {
-    return {
-      connectionString: DATABASE_URL,
-      ssl: {
-        rejectUnauthorized: false
-      },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000
-    };
+  if (!DATABASE_URL) {
+    throw new Error("DATABASE_URL is required (Neon not configured)");
   }
+
+  return {
+    connectionString: DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    },
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+  };
+}
 
   const baseConfig = {
     user: DB_USER,
