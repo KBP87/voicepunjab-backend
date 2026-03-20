@@ -1500,47 +1500,34 @@ VoicePunjabAI Team`,
 });
 
 async function startServer() {
-  try {
-    console.log("Starting server...");
+  app.listen(PORT, "0.0.0.0", async () => {
+    console.log(`VoicePunjab API running on port ${PORT}`);
     console.log("DATABASE_URL =", DATABASE_URL ? "(set)" : "(missing)");
-    console.log("Connected DB_NAME =", DB_NAME || "(missing)");
-    console.log("Connected DB_USER =", DB_USER || "(missing)");
-    console.log("INSTANCE_CONNECTION_NAME =", INSTANCE_CONNECTION_NAME || "(missing)");
-    console.log("DB_HOST =", DB_HOST || "(not set)");
+    console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
+    console.log("RESEND_FROM =", RESEND_FROM || "(missing)");
+    console.log("ADMIN_EMAIL =", ADMIN_EMAIL || "(missing)");
 
     try {
-  await dbGet("SELECT 1 AS ok");
-  console.log("Database connected successfully.");
-} catch (err) {
-  console.error("DB connection failed:", err.message);
-}
+      await dbGet("SELECT 1 AS ok");
+      console.log("Database connected successfully.");
 
-    console.log("Database connected successfully.");
+      await initDatabase();
+      console.log("initDatabase finished successfully.");
 
-    await initDatabase();
-    console.log("initDatabase finished successfully.");
+      await ensureAdminUser();
 
-    await ensureAdminUser();
+      const tables = await dbAll(`
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
+        ORDER BY table_schema, table_name
+      `);
 
-    const tables = await dbAll(`
-      SELECT table_schema, table_name
-      FROM information_schema.tables
-      WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-      ORDER BY table_schema, table_name
-    `);
-
-    console.log("Tables after init:", tables);
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`VoicePunjab API running on port ${PORT}`);
-      console.log("RESEND_API_KEY =", RESEND_API_KEY ? "(set)" : "(missing)");
-      console.log("RESEND_FROM =", RESEND_FROM || "(missing)");
-      console.log("ADMIN_EMAIL =", ADMIN_EMAIL || "(missing)");
-    });
-  } catch (err) {
-    console.error("Server startup failed:", err);
-    process.exit(1);
-  }
+      console.log("Tables after init:", tables);
+    } catch (err) {
+      console.error("Startup DB init failed:", err);
+    }
+  });
 }
 
 app.get("/", (req, res) => {
